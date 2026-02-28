@@ -1,0 +1,67 @@
+{
+  "name": "FallDetectionLog",
+  "type": "object",
+  "properties": {
+    "distance": {
+      "type": "number",
+      "description": "Distance measurement in meters"
+    },
+    "pressure": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ],
+      "description": "Pressure applied by person (0=Low, 1=Medium, 2=High)"
+    },
+    "hrv": {
+      "type": "number",
+      "description": "Heart Rate Variability in ms"
+    },
+    "sugar_level": {
+      "type": "number",
+      "description": "Blood sugar level in mg/dL"
+    },
+    "spo2": {
+      "type": "number",
+      "description": "Blood oxygen saturation percentage"
+    },
+    "accelerometer": {
+      "type": "integer",
+      "enum": [
+        0,
+        1
+      ],
+      "description": "Acceleration detected (0=No, 1=Yes)"
+    },
+    "decision": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ],
+      "description": "Fall detection decision (0=Safe, 1=Warning, 2=Fall)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes or observations"
+    },
+    "measurement_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date and time of measurement"
+    }
+  },
+  "required": [
+    "distance",
+    "pressure",
+    "hrv",
+    "sugar_level",
+    "spo2",
+    "accelerometer",
+    "decision",
+    "measurement_date"
+  ]
+}

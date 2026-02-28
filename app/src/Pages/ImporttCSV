@@ -1,0 +1,377 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+
+export default function ImportCSV() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState(null);
+  const [extractedData, setExtractedData] = useState(null);
+  const [error, setError] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [importSuccess, setImportSuccess] = useState(false);
+
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile && selectedFile.type === "text/csv") {
+      setFile(selectedFile);
+      setError(null);
+      setExtractedData(null);
+    } else {
+      setError("Please upload a valid CSV file");
+      setFile(null);
+    }
+  };
+
+  const processCSV = async () => {
+    if (!file) return;
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+
+      const recordSchema = {
+        type: "object",
+        properties: {
+          distance: {
+            type: "number",
+            description: "Distance measurement in meters"
+          },
+          pressure: {
+            type: "integer",
+            enum: [0, 1, 2],
+            description: "Pressure applied by person (0=Low, 1=Medium, 2=High)"
+          },
+          hrv: {
+            type: "number",
+            description: "Heart Rate Variability in ms"
+          },
+          sugar_level: {
+            type: "number",
+            description: "Blood sugar level in mg/dL"
+          },
+          spo2: {
+            type: "number",
+            description: "Blood oxygen saturation percentage"
+          },
+          accelerometer: {
+            type: "integer",
+            enum: [0, 1],
+            description: "Acceleration detected (0=No, 1=Yes)"
+          },
+          decision: {
+            type: "integer",
+            enum: [0, 1, 2],
+            description: "Fall detection decision (0=Safe, 1=Warning, 2=Fall)"
+          },
+          notes: {
+            type: "string",
+            description: "Additional notes or observations"
+          },
+          measurement_date: {
+            type: "string",
+            format: "date-time",
+            description: "Date and time of measurement"
+          }
+        },
+        required: ["distance", "pressure", "hrv", "sugar_level", "spo2", "accelerometer", "decision", "measurement_date"]
+      };
+
+      const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
+        file_url,
+        json_schema: {
+          type: "object",
+          properties: {
+            records: {
+              type: "array",
+              items: recordSchema
+            }
+          }
+        }
+      });
+
+      if (result.status === "success" && result.output && result.output.records) {
+        setExtractedData(result.output.records);
+      } else {
+        setError(result.details || "Failed to extract data from CSV. Please check the file format.");
+      }
+    } catch (err) {
+      setError("Error processing CSV file. Please ensure the file format matches the required structure.");
+      console.error(err);
+    }
+
+    setIsProcessing(false);
+  };
+
+  const importMutation = useMutation({
+    mutationFn: async (records) => {
+      const formattedRecords = records.map(record => ({
+        ...record,
+        distance: parseFloat(record.distance),
+        pressure: parseInt(record.pressure),
+        hrv: parseFloat(record.hrv),
+        sugar_level: parseFloat(record.sugar_level),
+        spo2: parseFloat(record.spo2),
+        accelerometer: parseInt(record.accelerometer),
+        decision: parseInt(record.decision),
+      }));
+      return base44.entities.FallDetectionLog.bulkCreate(formattedRecords);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fallLogs'] });
+      setImportSuccess(true);
+      setTimeout(() => {
+        navigate(createPageUrl("DailyView"));
+      }, 2000);
+    },
+    onError: (err) => {
+      setError("Failed to import data. Please try again.");
+    }
+  });
+
+  const handleImport = () => {
+    if (extractedData && extractedData.length > 0) {
+      importMutation.mutate(extractedData);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = `Distance,Pressure,HRV,Sugar level,SpO2,Accelerometer,Decision,Notes,Measurement Date
+25.54,1,101.396,61.08,87.77,1,1,Normal reading,2025-01-20T08:30:00
+2.595,2,110.19,20.207,65.19,1,2,Fall detected,2025-01-20T14:00:00
+15.3,0,95.5,75.2,92.4,0,0,Safe measurement,2025-01-20T18:45:00`;
+
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'cstick_template.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const getDecisionBadge = (decision) => {
+    const styles = {
+      0: "bg-green-100 text-green-800 border-green-200",
+      1: "bg-amber-100 text-amber-800 border-amber-200",
+      2: "bg-red-100 text-red-800 border-red-200"
+    };
+    const labels = { 0: "Safe", 1: "Warning", 2: "Fall" };
+    return <Badge className={`${styles[decision]} border`}>{decision} - {labels[decision]}</Badge>;
+  };
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-slate-900 mb-2">Import CSV Data</h1>
+          <p className="text-slate-600">Bulk upload fall detection logs from a CSV file</p>
+        </div>
+
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {importSuccess && (
+          <Alert className="mb-6 bg-green-50 border-green-200">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">
+              Data imported successfully! Redirecting to Daily View...
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!extractedData && (
+          <div className="space-y-6">
+            <Card className="border-teal-100 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="border-b border-teal-50">
+                <CardTitle className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-teal-600" />
+                  CSV File Format
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="mb-4">
+                  <p className="text-sm text-slate-600 mb-4">
+                    Your CSV file should have the following columns:
+                  </p>
+                  <div className="bg-slate-100 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                    <div className="whitespace-nowrap">
+                      Distance, Pressure, HRV, Sugar level, SpO2, Accelerometer, Decision, Notes, Measurement Date
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <p><strong>Distance:</strong> Number (meters) - e.g., 25.54</p>
+                    <p><strong>Pressure:</strong> Integer 0, 1, or 2 (0=Low, 1=Medium, 2=High pressure applied)</p>
+                    <p><strong>HRV:</strong> Number (ms) - Heart Rate Variability - e.g., 101.396</p>
+                    <p><strong>Sugar level:</strong> Number (mg/dL) - Blood sugar - e.g., 61.08</p>
+                    <p><strong>SpO2:</strong> Number (percentage) - Blood oxygen - e.g., 87.77</p>
+                    <p><strong>Accelerometer:</strong> Integer 0 or 1 (0=No acceleration, 1=Acceleration detected)</p>
+                    <p><strong>Decision:</strong> Integer 0, 1, or 2 (0=Safe, 1=Warning, 2=Fall detected)</p>
+                    <p><strong>Notes:</strong> Text (optional)</p>
+                    <p><strong>Measurement Date:</strong> Date/Time format (e.g., 2025-01-20T08:30:00)</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={downloadTemplate}
+                  className="gap-2 border-teal-200"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Template CSV
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border-teal-100 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="border-b border-teal-50">
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-teal-600" />
+                  Upload CSV File
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="border-2 border-dashed border-teal-200 rounded-xl p-8 text-center hover:border-teal-400 transition-colors">
+                  <FileSpreadsheet className="w-16 h-16 mx-auto mb-4 text-teal-400" />
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="csv-upload"
+                  />
+                  <label
+                    htmlFor="csv-upload"
+                    className="cursor-pointer"
+                  >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-teal-200"
+                      onClick={() => document.getElementById('csv-upload').click()}
+                    >
+                      Select CSV File
+                    </Button>
+                  </label>
+                  {file && (
+                    <p className="mt-4 text-sm text-slate-600">
+                      Selected: <strong>{file.name}</strong>
+                    </p>
+                  )}
+                </div>
+
+                {file && (
+                  <Button
+                    onClick={processCSV}
+                    disabled={isProcessing}
+                    className="w-full mt-6 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 py-6 text-lg font-semibold"
+                  >
+                    {isProcessing ? "Processing..." : "Process CSV File"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {extractedData && extractedData.length > 0 && (
+          <div className="space-y-6">
+            <Card className="border-teal-100 bg-white/80 backdrop-blur-sm">
+              <CardHeader className="border-b border-teal-50">
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    Preview Data ({extractedData.length} records)
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setExtractedData(null);
+                      setFile(null);
+                    }}
+                  >
+                    Upload Different File
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Distance</TableHead>
+                        <TableHead>Pressure</TableHead>
+                        <TableHead>HRV</TableHead>
+                        <TableHead>Sugar</TableHead>
+                        <TableHead>SpO2</TableHead>
+                        <TableHead>Accel.</TableHead>
+                        <TableHead>Decision</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {extractedData.slice(0, 10).map((record, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="whitespace-nowrap">
+                            {record.measurement_date ? new Date(record.measurement_date).toLocaleString() : '-'}
+                          </TableCell>
+                          <TableCell>{record.distance}</TableCell>
+                          <TableCell>{record.pressure}</TableCell>
+                          <TableCell>{record.hrv}</TableCell>
+                          <TableCell>{record.sugar_level}</TableCell>
+                          <TableCell>{record.spo2}</TableCell>
+                          <TableCell>{record.accelerometer}</TableCell>
+                          <TableCell>{getDecisionBadge(record.decision)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {extractedData.length > 10 && (
+                  <p className="text-sm text-slate-500 mt-4 text-center">
+                    Showing first 10 of {extractedData.length} records
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex gap-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setExtractedData(null);
+                  setFile(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleImport}
+                disabled={importMutation.isPending}
+                className="flex-1 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 py-6 text-lg font-semibold"
+              >
+                {importMutation.isPending ? "Importing..." : `Import ${extractedData.length} Records`}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
