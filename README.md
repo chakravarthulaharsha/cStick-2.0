@@ -499,6 +499,18 @@ cStick 2.0 is a research prototype and is not a certified medical device. It sho
 
 If you use this repository or build upon this work, please cite the related cStick 2.0 research paper:
 
-```text
-cStick 2.0: An IoMT-Edge Based Vision-Enabled Smart System for Personalized Fall Prediction and Detection
+```Bibtext
+@Article{electronics15153375,
+AUTHOR = {Rachakonda, Laavanya and Chakravarthula, Sai Sri Harsha and Mohanty, Saraju P. and Kougianos, Elias},
+TITLE = {cStick 2.0: An IoMT-Edge-Based Vision-Enabled Smart System for Personalized Fall Prediction and Detection},
+JOURNAL = {Electronics},
+VOLUME = {15},
+YEAR = {2026},
+NUMBER = {15},
+ARTICLE-NUMBER = {3375},
+URL = {https://www.mdpi.com/2079-9292/15/15/3375},
+ISSN = {2079-9292},
+ABSTRACT = {Falls among older adults can cause serious injury and loss of independence. cStick 2.0 is a vision-enabled, IoMT-edge based smart walking-stick prototype that combines multimodal fall-risk classification with embedded obstacle awareness. The fall-risk classifiers were evaluated using a 9670-record development dataset, on which the compact DNN achieved 95.40% accuracy, 92.35% balanced accuracy, a macro F1-score of 93.90%, and a ROC-AUC of 97.44%. The Arduino Nicla Vision obstacle module used an INT8 Edge Impulse model with centroid-based direction assignment and time-of-flight distance sensing; 144 controlled trials produced 75.00% obstacle-presence accuracy at approximately 19–20 FPS. Sensor acquisition, GPS, display output, buzzer response, and CSV record accumulation were demonstrated at a prototype level. Synchronized older-adult evaluation, device-to-application communication, secure caregiver services, multimodal accessibility feedback, and longitudinal personalization remain future validation stages.},
+DOI = {10.3390/electronics15153375}
+}
 ```
